@@ -6,8 +6,8 @@ export MULTIPART_MAX_FILE_SIZE=${MULTIPART_MAX_FILE_SIZE:-500MB}
 export MULTIPART_MAX_REQUEST_SIZE=${MULTIPART_MAX_REQUEST_SIZE:-500MB}
 
 # Database
-export DB_URL=${DB_URL:-"jdbc:sqlserver://sql-server:1433;databaseName=unzip_db;encrypt=true;trustServerCertificate=true;"}
-export DB_USERNAME=${DB_USERNAME:-"sa"}
+export DB_URL=${DB_URL:-"jdbc:oracle:oci:@(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=oracle-server)(PORT=1521))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=FREEPDB1)))"}
+export DB_USERNAME=${DB_USERNAME:-"unzip_user"}
 export DB_PASSWORD=${DB_PASSWORD:-"YourStrong!Passw0rd"}
 
 # Documentum Service

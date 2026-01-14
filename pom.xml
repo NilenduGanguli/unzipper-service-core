@@ -39,11 +39,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
-        <!-- SQL Server JDBC Driver -->
+        <!-- Oracle JDBC Driver - Version 19 to match widely available Instant Client 19 -->
         <dependency>
-            <groupId>com.microsoft.sqlserver</groupId>
-            <artifactId>mssql-jdbc</artifactId>
-            <version>12.4.3.jre11</version>
+            <groupId>com.oracle.database.jdbc</groupId>
+            <artifactId>ojdbc10</artifactId>
+            <version>19.19.0.0</version>
         </dependency>
         <!-- RestTemplate and HTTP client -->
         <dependency>

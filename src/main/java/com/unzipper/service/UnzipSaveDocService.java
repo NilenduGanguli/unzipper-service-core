@@ -473,7 +473,7 @@ public class UnzipSaveDocService implements DisposableBean {
             long sizeBytes = node.getSize();
             totalSizeAccumulator.addAndGet(sizeBytes);
             filesUnzipped.put(node.getPath(), new UnzippedFileDetail(
-                    node.getName(), node.getDocumentLinkId(), String.valueOf(sizeBytes / 1024.0)
+                    node.getName(), node.getDocumentLinkId(), String.valueOf(sizeBytes / 1024)
             ));
         }
         if (node.getChildren() != null) {
