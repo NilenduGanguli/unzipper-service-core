@@ -161,6 +161,133 @@ public class UnzipSaveDocService implements DisposableBean {
         }
     }
 
+    /**
+     * Upload zip file directly, store in Documentum, then unzip and process.
+     */
+    public Map<String, UnzipDetail> processDirectUpload(org.springframework.web.multipart.MultipartFile file, String clientId) {
+        logger.info("Processing direct upload unzip for clientId: {}, filename: {}", clientId, file.getOriginalFilename());
+
+        KycDocumentUnzip kycRecord = null;
+        File tempZipFile = null;
+        Path tempDir = null;
+
+        try {
+            // 1. Create temp directory and save uploaded file
+            tempDir = Files.createTempDirectory("unzipper_upload_");
+            String safeFilename = FilenameUtils.getName(file.getOriginalFilename());
+            if (safeFilename == null || safeFilename.isEmpty()) {
+                safeFilename = "upload.zip";
+            }
+            tempZipFile = tempDir.resolve(safeFilename).toFile();
+            file.transferTo(tempZipFile);
+            logger.info("Saved uploaded file to temp: {}, size: {} bytes", tempZipFile.getAbsolutePath(), tempZipFile.length());
+
+            // 2. Upload the PARENT zip to Documentum immediately to get a documentLinkId
+            // Using a simple read of the temp file. For very large files, this might need streaming, 
+            // but DocumentumClient.uploadDocument currently takes byte[]. 
+            // Assuming max file size fits in memory as per existing logic.
+            byte[] fileContent = Files.readAllBytes(tempZipFile.toPath());
+            String documentLinkId = documentumClient.uploadDocument(fileContent, safeFilename, null);
+            logger.info("Uploaded parent zip to Documentum, received documentLinkId: {}", documentLinkId);
+
+            // 3. Log the request to database using the new ID
+            kycRecord = new KycDocumentUnzip(clientId, documentLinkId);
+            kycRecord.setLstUpdTime(LocalTime.now());
+            kycRecord.setLstUpdDt(LocalDate.now());
+            kycRecord.setDocumentName(safeFilename);
+            kycDocumentUnzipRepository.save(kycRecord);
+            logger.info("Logged request to database with KYC_UNZIP_ID: {}", kycRecord.getKycUnzipId());
+
+            // 4. Process the zip file (Reuse existing logic)
+            long zippedSizeBytes = tempZipFile.length();
+            ProcessingResult result = processZipFile(tempZipFile, safeFilename, "", zippedSizeBytes, documentLinkId, clientId).get();
+
+            // 5. Update database record with processing results
+            kycRecord.setDocumentName(result.node.getName());
+            kycRecord.setDocumentPath(result.node.getPath());
+            kycRecord.setLstUpdTime(LocalTime.now());
+            kycRecord.setLstUpdDt(LocalDate.now());
+            kycDocumentUnzipRepository.save(kycRecord);
+
+            logger.info("Successfully processed {} files for documentLinkId: {}", result.docIds.size(), documentLinkId);
+
+            // 6. Cleanup
+            try {
+                Files.walk(tempDir)
+                    .sorted(Comparator.reverseOrder())
+                    .map(Path::toFile)
+                    .forEach(File::delete);
+                logger.debug("Cleaned up temporary directory: {}", tempDir);
+            } catch (Exception ignored) {
+                logger.warn("Error cleaning up temporary files at {}", tempDir, ignored);
+            }
+
+            // 7. Construct response (Same format)
+            UnzipDetail detail = new UnzipDetail();
+            detail.setDocumentLinkId(documentLinkId);
+            detail.setClientId(clientId);
+            detail.setFileName(result.node.getName());
+            detail.setZippedSize(String.valueOf(zippedSizeBytes / 1024)); 
+            
+            Map<String, Object> treeStruct = new HashMap<>();
+            treeStruct.put(result.node.getName(), buildChildrenMap(result.node));
+            detail.setTreeStruct(treeStruct);
+
+            Map<String, UnzippedFileDetail> filesUnzipped = new HashMap<>();
+            AtomicLong totalUnzippedBytes = new AtomicLong(0);
+            populateFilesUnzipped(result.node, filesUnzipped, totalUnzippedBytes);
+            detail.setFilesUnzipped(filesUnzipped);
+            
+            detail.setUnzippedSize(String.valueOf(totalUnzippedBytes.get() / 1024));
+
+            return Collections.singletonMap(documentLinkId, detail);
+
+        } catch (Exception e) {
+            logger.error("Error processing direct upload unzip: {}", e.getMessage(), e);
+            
+            // Clean up temp dir if it exists
+            if (tempDir != null) {
+                try {
+                    Files.walk(tempDir)
+                        .sorted(Comparator.reverseOrder())
+                        .map(Path::toFile)
+                        .forEach(File::delete);
+                } catch (Exception ignored) {}
+            }
+
+            if (kycRecord != null) {
+                try {
+                    String errorMsg = e.getMessage();
+                    if (errorMsg != null && errorMsg.length() > 3000) {
+                        errorMsg = errorMsg.substring(0, 3000);
+                    }
+                    kycRecord.setError(errorMsg);
+                    kycRecord.setLstUpdTime(LocalTime.now());
+                    kycRecord.setLstUpdDt(LocalDate.now());
+                    kycDocumentUnzipRepository.save(kycRecord);
+                } catch (Exception dbEx) {
+                    logger.error("Failed to update error status in database", dbEx);
+                }
+            } else if (clientId != null) {
+                 // Try to log minimal error record if we failed before getting a doc ID
+                 // But we need a DOC_ID for NOT NULL constraint.
+                 try {
+                     KycDocumentUnzip errorRecord = new KycDocumentUnzip(clientId, "ERROR_PRE_UPLOAD");
+                     String errorMsg = e.getMessage();
+                     if (errorMsg != null && errorMsg.length() > 3000) {
+                             errorMsg = errorMsg.substring(0, 3000);
+                     }
+                     errorRecord.setError(errorMsg);
+                     kycDocumentUnzipRepository.save(errorRecord);
+                 } catch (Exception dbEx) {
+                     logger.error("Failed to save pre-upload error record", dbEx);
+                 }
+            }
+
+            throw new RuntimeException("Failed to process document unzip", e);
+        }
+    }
+
     private CompletableFuture<ProcessingResult> processZipFile(File file, String zipName, String relativePath, long compressedSize, 
                                                                 String parentDocumentLinkId, String clientId) {
         return CompletableFuture.supplyAsync(() -> {
