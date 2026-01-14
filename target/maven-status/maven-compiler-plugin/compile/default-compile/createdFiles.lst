@@ -1,0 +1,15 @@
+com/unzipper/config/WebClientConfig.class
+com/unzipper/entity/KycDocumentUnzip.class
+com/unzipper/model/UnzipDetail.class
+com/unzipper/model/UnzippedFileDetail.class
+com/unzipper/model/ZipNode.class
+com/unzipper/repository/KycDocumentUnzipRepository.class
+com/unzipper/UnzipperApplication.class
+com/unzipper/service/UnzipSaveDocService.class
+com/unzipper/model/DownloadedDocument.class
+com/unzipper/model/UnzipResponse.class
+com/unzipper/controller/UnzipController.class
+com/unzipper/service/UnzipService$ProcessingResult.class
+com/unzipper/service/UnzipService.class
+com/unzipper/client/DocumentumClient.class
+com/unzipper/service/UnzipSaveDocService$ProcessingResult.class
